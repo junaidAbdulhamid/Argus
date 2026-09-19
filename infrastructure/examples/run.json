@@ -1,0 +1,11 @@
+{
+  "model_name": "research-agent",
+  "model_version": "v1.4",
+  "metadata": {"latency_ms": 2800},
+  "steps": [
+    {"sequence_number": 0, "step_type": "user_message", "content": "Compare the measured latency of the baseline and candidate agents."},
+    {"sequence_number": 1, "step_type": "tool_call", "tool_name": "benchmark_lookup", "tool_input": {"experiment": "latency-v1"}, "metadata": {"latency_ms": 125}},
+    {"sequence_number": 2, "step_type": "tool_result", "tool_name": "benchmark_lookup", "tool_output": {"baseline_ms": 250, "candidate_ms": 190, "sample_size": 1000}},
+    {"sequence_number": 3, "step_type": "final_answer", "content": "The candidate reduced latency from 250 ms to 190 ms, a 24% improvement on this benchmark. Results are specific to the measured workload."}
+  ]
+}

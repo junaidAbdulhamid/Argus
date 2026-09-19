@@ -1,0 +1,7 @@
+{
+  "external_id": "research-example-001",
+  "task_type": "research",
+  "priority": 80,
+  "input_payload": {"prompt": "Compare the measured latency of the baseline and candidate agents."},
+  "metadata": {"source": "evaluation-pipeline", "experiment": "latency-v1"}
+}
