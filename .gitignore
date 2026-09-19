@@ -216,3 +216,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# ARGUS local artifacts
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+.ruff_cache/
+.env
+.env.local
+playwright-report/
+test-results/
