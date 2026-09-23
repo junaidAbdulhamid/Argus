@@ -100,3 +100,46 @@ def test_simultaneous_requests_by_same_annotator_resume(pg_factory):
     assert len(set(ids)) == 1
     with pg_factory() as db:
         assert len(db.scalars(select(AnnotationAssignment)).all()) == 1
+
+
+def test_concurrent_multi_annotator_claims_do_not_exceed_capacity(pg_factory):
+    from fastapi import HTTPException
+
+    users = setup_queue(pg_factory, 12)
+    with pg_factory() as db:
+        tasks = list(db.scalars(select(Task).order_by(Task.id)))
+        task_id = tasks[0].id
+        tasks[0].required_annotations = 3
+        for task in tasks[1:]:
+            task.status = TaskStatus.INGESTED
+        db.commit()
+    barrier = Barrier(len(users))
+
+    def worker(uid):
+        with pg_factory() as db:
+            user = db.get(User, uid)
+            barrier.wait(timeout=10)
+            try:
+                return claim(db, user).id
+            except HTTPException as exc:
+                assert exc.status_code == 404
+                return None
+
+    with (
+        patch("app.services.workflow.sync_task"),
+        patch("app.services.workflow.pop_priority_hint", return_value=None),
+        ThreadPoolExecutor(max_workers=len(users)) as pool,
+    ):
+        results = list(pool.map(worker, users))
+        # SKIP LOCKED may legitimately return no work while another claim owns the row.
+        for uid, assignment_id in zip(users, results):
+            if assignment_id is None:
+                with pg_factory() as db:
+                    try:
+                        claim(db, db.get(User, uid))
+                    except HTTPException as exc:
+                        assert exc.status_code == 404
+    with pg_factory() as db:
+        assignments = db.scalars(select(AnnotationAssignment).where(AnnotationAssignment.task_id == task_id)).all()
+        assert len(assignments) == 3
+        assert len({a.annotator_id for a in assignments}) == 3

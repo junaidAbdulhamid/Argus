@@ -32,7 +32,19 @@ def client():
         def foreign_keys(connection, _):
             connection.execute("PRAGMA foreign_keys=ON")
 
-    Base.metadata.create_all(engine)
+    if postgres_url:
+        from alembic import command
+        from alembic.config import Config
+        from pathlib import Path
+
+        backend = Path(__file__).resolve().parents[2]
+        config = Config(str(backend / "alembic.ini"))
+        config.set_main_option("script_location", str(backend / "alembic"))
+        with engine.begin() as connection:
+            config.attributes["connection"] = connection
+            command.upgrade(config, "head")
+    else:
+        Base.metadata.create_all(engine)
     factory = sessionmaker(engine, expire_on_commit=False)
 
     def override():

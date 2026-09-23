@@ -203,4 +203,5 @@ def test_state_machine_has_no_approval_shortcut():
     for state, targets in TRANSITIONS.items():
         if state != TaskStatus.PENDING_REVIEW:
             assert TaskStatus.APPROVED not in targets
-    assert TRANSITIONS[TaskStatus.APPROVED] == set()
+    # Phase 2 permits audited review revisions; approval still has one entry gate.
+    assert TaskStatus.QUEUED not in TRANSITIONS[TaskStatus.APPROVED]
