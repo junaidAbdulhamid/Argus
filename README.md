@@ -12,7 +12,7 @@ Requires Docker Desktop (running) and Docker Compose.
 docker compose up --build -d
 ```
 
-Open **http://localhost:8080**. API documentation: **http://localhost:8000/docs**. The backend applies Alembic migrations and seeds the demo automatically. Health checks coordinate startup for PostgreSQL, Redis, API, and frontend.
+Open **http://localhost:8080**. API documentation: **http://localhost:8000/docs**. The backend applies Alembic migrations and seeds the demo automatically. Health checks coordinate startup for PostgreSQL, Redis, API, export worker, and frontend.
 
 | Role | Email | Demo password |
 | --- | --- | --- |
@@ -20,6 +20,7 @@ Open **http://localhost:8080**. API documentation: **http://localhost:8000/docs*
 | Annotator | `annotator@argus.dev` | `Argus-demo-2026!` |
 | Reviewer | `reviewer@argus.dev` | `Argus-demo-2026!` |
 | Second annotator | `annotator2@argus.dev` | `Argus-demo-2026!` |
+| Third annotator | `annotator3@argus.dev` | `Argus-demo-2026!` |
 
 These are explicit local demo accounts. Ports bind to localhost. Copy `.env.example` to `.env` to customize settings; use a generated JWT secret and disable `SEED_DEMO` before a non-demo deployment. Existing seed accounts are never reset when containers restart.
 
@@ -31,34 +32,36 @@ docker compose down             # stop; preserve data volumes
 
 ## Try the feedback loop
 
-1. Sign in as admin. Explore the live overview, three projects, and 54 realistic tasks. Filter the task explorer, open a trace, expand tool inputs/outputs, and inspect its audit log.
-2. Sign in as an annotator. Open **Annotation Queue**, resume or claim a task, select an outcome and quality score, and write feedback. Structured fields accept a JSON object. Save the draft, then complete the assignment.
-3. The task moves to **PENDING_REVIEW**. Sign in as reviewer, find it in the task explorer, inspect the trace and annotations, and select **Review task**. Approval/rejection requires a written rationale.
-4. Admins can requeue rejected work. Earlier assignments, annotations, and decisions remain available as provenance.
+1. Sign in as admin. Open the **Agent quality · multi-review** project and its schema/quality settings. It has seven dynamic field types, three independent annotators, and explicit human quality gates.
+2. Open **Annotation Queue** as an annotator. Claim work, complete the versioned form, save, and submit. Other annotators' answers remain hidden by default. Reference tasks are inserted at the configured cadence.
+3. Open **Human Review** as reviewer. Compare the trajectory, independent annotations, agreement metrics, and history. Approve, reject, request changes, or escalate with a written rationale. Resolve open issues through **Escalations**.
+4. Open **Quality** for cohort agreement, gold accuracy, throughput, and inspectable annotator profiles. Agreement measures consistency, not correctness.
+5. Open **Datasets → argus-agent-reliability**. The seed includes two finalized versions, full lineage, trajectory exports, and a real paired-response DPO export. To build another version, prepare approved examples, filter/select them, create a draft, and finalize. Finalization rechecks every gate.
+6. Request an SFT, DPO, reward, or trajectory export as JSON/JSONL. **Export History** tracks worker progress and offers dataset, manifest, schema, and provenance downloads.
 
-An annotator cannot approve their own task, including when that annotator is an admin. Completing an annotation never approves it. Dataset exports and advanced monitoring are deliberately future-phase routes.
+The additive Phase 2 seed includes 18 tasks, three annotators, gold attempts, disagreements, escalations, revisions, five training examples, and two finalized dataset versions. Phase 1's original projects and tasks remain available. A reviewer cannot approve their own annotation. Completing annotations never grants training eligibility. See [quality rules](docs/quality-control.md) and [datasets and export contracts](docs/datasets.md).
 
 ## Implementation
 
 ```text
 backend/
   app/
-    api/             Auth, projects, tasks, annotations, operations
+    api/             Auth, projects, tasks, quality, datasets, operations
     auth/            Argon2 and JWT validation
     core/            Typed environment configuration
     db/              Session and transaction management
     models/          Relational entities, enums, constraints
     schemas/         Pydantic input contracts
     repositories/    Tenant-scoped queries and aggregates
-    services/        Ingestion and workflow logic
-    queue/           Redis priority coordination and fallback
+    services/        Workflow, consensus, quality gates, snapshots, exporters
+    queue/           Redis coordination, export worker, database fallback
     tests/           API, queue, and PostgreSQL concurrency tests
     seed.py
     main.py
   alembic/           Versioned schema migration
 frontend/
   src/components/    Shared UI primitives and trajectory timeline
-  src/pages/         Dashboard, projects, explorer, annotation, settings
+  src/pages/         Annotation, review, quality, schemas, datasets, lineage
   e2e/               Browser tests against the real running stack
 infrastructure/
   scripts/           Verification and migration checks
@@ -70,7 +73,7 @@ docs/
 
 Python 3.12+, FastAPI, SQLAlchemy 2, Alembic, Pydantic, PostgreSQL 16, Redis 7, and pytest power the backend. React, TypeScript, Vite, Tailwind CSS, TanStack Query, and React Router power the frontend. Nginx serves the production web build and proxies `/api` to FastAPI.
 
-PostgreSQL owns queue/assignment state. A Redis sorted set provides atomic priority hints; `FOR UPDATE SKIP LOCKED`, per-user serialization, and a partial unique index prevent duplicate active ownership. Missing or unavailable Redis entries fall back to PostgreSQL. Assignment leases expire after 60 minutes and recover on the next claim request. See [architecture decisions and failure semantics](docs/architecture.md).
+PostgreSQL owns queue/assignment state. A Redis sorted set provides atomic priority hints; `FOR UPDATE SKIP LOCKED`, per-user serialization, and a partial unique index prevent duplicate active ownership within each task/annotator/round. Missing or unavailable Redis entries fall back to PostgreSQL. Assignment leases expire after 60 minutes and recover on the next claim request. See [architecture decisions and failure semantics](docs/architecture.md).
 
 ## Local development
 
@@ -80,7 +83,7 @@ Requires Python 3.12+, Node 22+, and the database/cache services. The API reads 
 cp .env.example .env
 docker compose up -d postgres redis
 # If the complete stack is running, release ports used by local processes:
-docker compose stop backend frontend
+docker compose stop backend worker frontend
 
 cd backend
 python3.12 -m venv .venv
@@ -90,10 +93,11 @@ pip install -e '.[dev]'
 cp ../.env .env
 alembic upgrade head
 python -m app.seed
+python -m app.seed_phase2
 uvicorn app.main:app --reload --port 8000
 ```
 
-In a second terminal:
+In another terminal, activate the backend environment and run `python -m app.queue.worker`. The API and worker must use the same `EXPORT_DIRECTORY`. Start the frontend separately:
 
 ```sh
 cd frontend
@@ -115,9 +119,10 @@ Open http://localhost:5173. Vite forwards `/api` to port 8000. Production and de
 | `ASSIGNMENT_TIMEOUT_MINUTES` | Assignment lease duration | `60` |
 | `CORS_ORIGINS` | JSON array of allowed browser origins | Local ports 5173 and 8080 |
 | `SEED_DEMO` | Seed on container startup | `true` in local Compose |
+| `EXPORT_DIRECTORY` | Shared API/worker artifact directory | `./exports` locally; `/app/exports` in Compose |
 | `SEED_PASSWORD` | Password for initial demo accounts | `Argus-demo-2026!` |
 
-The seed command requires `SEED_PASSWORD` and does not print it. It creates demo records only when the demo admin does not already exist. To initialize an empty workspace, set `SEED_DEMO=false` and register through the UI. Public registration creates a separate organization; admins provision existing-workspace members through Settings.
+The seed command requires `SEED_PASSWORD` and does not print it. Phase 1 skips an existing demo admin; Phase 2 separately skips an existing demo quality project. To initialize an empty workspace, set `SEED_DEMO=false` and register through the UI. Public registration creates a separate organization; admins provision existing-workspace members through Settings.
 
 ## API structure
 
@@ -133,6 +138,13 @@ All protected requests use `Authorization: Bearer <access_token>`. `/docs` conta
 | Queue | `POST /tasks/{id}/queue`, `POST /annotation/next`, `GET /annotation/assignments`, `GET /annotation/assignments/{id}` |
 | Annotation | `POST /assignments/{id}/start`, `POST /assignments/{id}/annotations`, `PATCH /annotations/{id}`, `POST /assignments/{id}/complete` |
 | Review | `POST /tasks/{id}/review` with `decision` and `reason` |
+| Quality configuration | `GET/PUT /projects/{id}/quality-rules`, `GET/POST /projects/{id}/annotation-schemas` |
+| Human review | `GET /review/queue`, `GET /tasks/{id}/quality`, `POST /tasks/{id}/reviews`, `POST /tasks/{id}/quality-gate` |
+| Calibration | `POST /tasks/{id}/gold`, `GET /gold-tasks`, `GET /quality/dashboard` |
+| Escalations | `GET /escalations`, `POST /tasks/{id}/escalations`, `POST /escalations/{id}/resolve` |
+| Training examples | `POST /tasks/{id}/training-examples`, `POST /training-examples/materialize`, `POST /training-examples/preview`, `GET /training-examples/{id}/lineage` |
+| Datasets | `GET/POST /datasets`, `GET /datasets/{id}`, `POST /datasets/{id}/versions`, `GET /dataset-versions/{id}`, `POST /dataset-versions/{id}/finalize` |
+| Exports | `POST /dataset-versions/{id}/exports`, `GET /exports`, `GET /exports/{id}/files/{artifact}` |
 | Operations | `GET /overview`, `GET /health` |
 
 `GET /tasks` accepts `project_id`, `status`, exact numeric `priority`, `search`, `sort` (`created_at`, `priority`, `status`), `direction`, `page`, and `page_size`. Queue claims and overview accept an optional `project_id`.
@@ -185,7 +197,7 @@ npm run format:check
 npm run test:e2e
 ```
 
-Browser tests target the running seeded stack at `http://localhost:8080`, use installed Chrome on macOS, and write screenshots into `docs/screenshots`. Override `ARGUS_WEB_URL`, `CHROME_PATH`, and `SEED_PASSWORD` as needed. The workflow test creates its own organization/users/project and deletes its project afterward; test accounts remain isolated from the demo organization. For Linux CI, install Playwright Chromium and set `CHROME_PATH` to its executable.
+Browser tests target the running seeded stack at `http://localhost:8080`, use installed Chrome on macOS, and write screenshots into `docs/screenshots`. Override `ARGUS_WEB_URL`, `CHROME_PATH`, and `SEED_PASSWORD` as needed. Browser workflows create isolated organizations/users/projects. Unprotected projects are deleted afterward; finalized provenance is intentionally retained in the isolated test organization. For Linux CI, install Playwright Chromium and set `CHROME_PATH` to its executable.
 
 From the repository root:
 
@@ -199,4 +211,4 @@ The migration check creates a disposable database, verifies upgrade and metadata
 
 ## Scope
 
-Phase 1 includes core ingestion, queue recovery, annotation, audit logging, team provisioning, and an independent review gate. It does not yet provide dataset snapshots/exports, external object storage, reviewer consensus/calibration, SSO, or Prometheus/Grafana integration. The local stack is a complete portfolio/development deployment; production deployment should supply managed secrets, TLS, backups, and edge authentication abuse controls.
+Phase 2 delivers versioned annotation schemas, independent multi-annotator work, normalized human reviews, consensus, auditable gates, gold calibration, escalations, immutable dataset versions, full lineage, and background JSON/JSONL exports. Monitoring integrations, external object storage, SSO, and Parquet remain outside this phase. Local artifact storage is a shared Docker volume; large data rows stream during export, while the provenance index is collected in memory. Production deployment should supply managed secrets, TLS, backups, and edge authentication abuse controls.
