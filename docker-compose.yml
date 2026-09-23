@@ -34,8 +34,10 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:5173","http://localhost:8080"]}
       TOKEN_MINUTES: ${TOKEN_MINUTES:-480}
       ASSIGNMENT_TIMEOUT_MINUTES: ${ASSIGNMENT_TIMEOUT_MINUTES:-60}
+      EXPORT_DIRECTORY: /app/exports
       SEED_DEMO: ${SEED_DEMO:-true}
       SEED_PASSWORD: ${SEED_PASSWORD:-Argus-demo-2026!}
+    volumes: ["export_data:/app/exports"]
     ports: ["127.0.0.1:8000:8000"]
     depends_on:
       postgres: {condition: service_healthy}
@@ -46,6 +48,23 @@ services:
       timeout: 5s
       retries: 15
       start_period: 20s
+    restart: unless-stopped
+  worker:
+    build: ./backend
+    command: ["python", "-m", "app.queue.worker"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-argus}:${POSTGRES_PASSWORD:-argus-local-password}@postgres:5432/${POSTGRES_DB:-argus}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-local-development-change-me-32-characters-minimum}
+      EXPORT_DIRECTORY: /app/exports
+    volumes: ["export_data:/app/exports"]
+    depends_on:
+      backend: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "from app.db.session import engine; from sqlalchemy import text; c=engine.connect(); c.execute(text('SELECT 1')); c.close()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
   frontend:
     build: ./frontend
@@ -61,3 +80,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  export_data:

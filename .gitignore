@@ -226,3 +226,7 @@ frontend/dist/
 .env.local
 playwright-report/
 test-results/
+
+# Generated training artifacts
+/exports/
+/backend/exports/
