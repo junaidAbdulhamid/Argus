@@ -43,7 +43,11 @@ def get_assignment(assignment_id: str, user=Depends(annotator), db=Depends(get_d
     annotation = db.scalar(select(Annotation).where(Annotation.assignment_id == row.id))
     task = db.get(Task, row.task_id)
     schema = db.get(AnnotationSchema, task.schema_id) if task.schema_id else None
-    return {**serialize(row), "annotation": serialize(annotation) if annotation else None, "schema": schema_detail(db, schema)}
+    return {
+        **serialize(row),
+        "annotation": serialize(annotation) if annotation else None,
+        "schema": schema_detail(db, schema),
+    }
 
 
 @router.post("/assignments/{assignment_id}/start")

@@ -185,5 +185,6 @@ class AuditEvent(Identity, Base):
     payload: Mapped[dict] = mapped_column(json_type, default=dict)
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now, index=True)
 
+
 # Register all tables on the shared metadata for Alembic and test databases.
 from app.models import quality, datasets  # noqa: E402,F401
