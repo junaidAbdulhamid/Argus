@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from app.db.session import get_db
 from app.auth.security import current_user, roles
-from app.models.entities import Project, Role
+from app.models.entities import Project, Role, Task
+from app.models.datasets import TrainingExample
+from app.models.quality import GoldAttempt, GoldReference, PreferencePair
 from app.schemas.requests import ProjectCreate, ProjectPatch
 from app.repositories.platform import project, counts, serialize
 from app.services.workflow import audit
@@ -51,5 +53,14 @@ def update(project_id: str, data: ProjectPatch, user=Depends(roles(Role.ADMIN)),
 @router.delete("/{project_id}", status_code=204)
 def delete(project_id: str, user=Depends(roles(Role.ADMIN)), db=Depends(get_db)):
     obj = project(db, user, project_id, lock=True)
+    task_ids = select(Task.id).where(Task.project_id == obj.id)
+    protected = (
+        db.scalar(select(TrainingExample.id).where(TrainingExample.task_id.in_(task_ids)).limit(1))
+        or db.scalar(select(PreferencePair.id).where(PreferencePair.task_id.in_(task_ids)).limit(1))
+        or db.scalar(select(GoldAttempt.id).join(GoldReference).where(GoldReference.task_id.in_(task_ids)).limit(1))
+    )
+    if protected:
+        raise HTTPException(409, "Project contains retained training or calibration provenance and cannot be deleted")
     audit(db, user, "PROJECT_DELETED", payload={"project_id": obj.id, "name": obj.name})
     db.delete(obj)
+    db.flush()

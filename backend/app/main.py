@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
-from app.api import auth, projects, tasks, annotation, operations
+from app.api import auth, projects, tasks, annotation, operations, quality, datasets
 from app.core.config import settings
 from app.db.session import SessionLocal
 from app.queue.redis_queue import health
@@ -20,10 +20,18 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings().cors_origins,
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
     allow_headers=["Authorization", "Content-Type"],
 )
-for router in [auth.router, projects.router, tasks.router, annotation.router, operations.router]:
+for router in [
+    auth.router,
+    projects.router,
+    tasks.router,
+    annotation.router,
+    operations.router,
+    quality.router,
+    datasets.router,
+]:
     app.include_router(router)
 
 
