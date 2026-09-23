@@ -96,23 +96,31 @@ def listing(
 @router.get("/tasks/{task_id}")
 def get(task_id: str, user=Depends(current_user), db=Depends(get_db)):
     obj = task(db, user, task_id)
-    p = project(db,user,obj.project_id)
-    own_completed = db.scalar(select(AnnotationAssignment.id).where(AnnotationAssignment.task_id==obj.id,AnnotationAssignment.annotator_id==user.id,AnnotationAssignment.round==obj.annotation_round,AnnotationAssignment.status==AssignmentStatus.COMPLETED))
-    reveal = user.role != Role.ANNOTATOR or (policy(p)["reveal_after_completion"] and own_completed and obj.status in {TaskStatus.PENDING_REVIEW,TaskStatus.APPROVED,TaskStatus.REJECTED})
-    annotations = select(Annotation).where(Annotation.task_id==obj.id)
-    assignments = select(AnnotationAssignment).where(AnnotationAssignment.task_id==obj.id)
+    p = project(db, user, obj.project_id)
+    own_completed = db.scalar(
+        select(AnnotationAssignment.id).where(
+            AnnotationAssignment.task_id == obj.id,
+            AnnotationAssignment.annotator_id == user.id,
+            AnnotationAssignment.round == obj.annotation_round,
+            AnnotationAssignment.status == AssignmentStatus.COMPLETED,
+        )
+    )
+    reveal = user.role != Role.ANNOTATOR or (
+        policy(p)["reveal_after_completion"]
+        and own_completed
+        and obj.status in {TaskStatus.PENDING_REVIEW, TaskStatus.APPROVED, TaskStatus.REJECTED}
+    )
+    annotations = select(Annotation).where(Annotation.task_id == obj.id)
+    assignments = select(AnnotationAssignment).where(AnnotationAssignment.task_id == obj.id)
     if not reveal:
-        annotations=annotations.where(Annotation.annotator_id==user.id)
-        assignments=assignments.where(AnnotationAssignment.annotator_id==user.id)
+        annotations = annotations.where(Annotation.annotator_id == user.id)
+        assignments = assignments.where(AnnotationAssignment.annotator_id == user.id)
     return {
         **serialize(obj),
         "project": serialize(project(db, user, obj.project_id)),
         "annotations": [serialize(a) for a in db.scalars(annotations)],
         "assignments": [
-            serialize(a)
-            for a in db.scalars(
-                assignments.order_by(AnnotationAssignment.assigned_at.desc())
-            )
+            serialize(a) for a in db.scalars(assignments.order_by(AnnotationAssignment.assigned_at.desc()))
         ],
     }
 
@@ -147,14 +155,26 @@ def trajectory(task_id: str, user=Depends(current_user), db=Depends(get_db)):
 @router.get("/tasks/{task_id}/audit")
 def events(task_id: str, user=Depends(current_user), db=Depends(get_db)):
     task(db, user, task_id)
-    q=select(AuditEvent,User.full_name).outerjoin(User,AuditEvent.user_id==User.id).where(AuditEvent.task_id==task_id)
-    if user.role==Role.ANNOTATOR:
-        q=q.where(AuditEvent.user_id==user.id,AuditEvent.event_type.in_(["TASK_ASSIGNED","ANNOTATION_STARTED","ANNOTATION_SAVED","ANNOTATION_UPDATED","ANNOTATION_SUBMITTED"]))
-    return [
-        {**serialize(e), "actor": name or "Deleted user"}
-        for e, name in db.execute(
-            q.order_by(AuditEvent.timestamp)
+    q = (
+        select(AuditEvent, User.full_name)
+        .outerjoin(User, AuditEvent.user_id == User.id)
+        .where(AuditEvent.task_id == task_id)
+    )
+    if user.role == Role.ANNOTATOR:
+        q = q.where(
+            AuditEvent.user_id == user.id,
+            AuditEvent.event_type.in_(
+                [
+                    "TASK_ASSIGNED",
+                    "ANNOTATION_STARTED",
+                    "ANNOTATION_SAVED",
+                    "ANNOTATION_UPDATED",
+                    "ANNOTATION_SUBMITTED",
+                ]
+            ),
         )
+    return [
+        {**serialize(e), "actor": name or "Deleted user"} for e, name in db.execute(q.order_by(AuditEvent.timestamp))
     ]
 
 
@@ -163,12 +183,15 @@ def enqueue(task_id: str, user=Depends(roles(Role.ADMIN)), db=Depends(get_db)):
     obj = task(db, user, task_id, lock=True)
     if not db.scalar(select(AgentRun.id).where(AgentRun.task_id == obj.id).limit(1)):
         raise HTTPException(409, "Ingest an agent trajectory before queueing this task")
-    if obj.status in {TaskStatus.REJECTED,TaskStatus.CHANGES_REQUESTED}:
+    if obj.status in {TaskStatus.REJECTED, TaskStatus.CHANGES_REQUESTED}:
         obj.annotation_round += 1
-    rules=policy(project(db,user,obj.project_id))
-    obj.required_annotations=rules["required_annotations"]
-    schema=active_schema(db,obj.project_id)
-    obj.schema_id=schema.id if schema else None
+    rules = policy(project(db, user, obj.project_id))
+    obj.required_annotations = rules["required_annotations"]
+    from app.models.quality import GoldReference
+
+    if not db.scalar(select(GoldReference.id).where(GoldReference.task_id == obj.id)):
+        schema = active_schema(db, obj.project_id)
+        obj.schema_id = schema.id if schema else None
     transition(db, user, obj, TaskStatus.QUEUED)
     audit(db, user, "TASK_QUEUED", obj)
     db.commit()
@@ -179,5 +202,5 @@ def enqueue(task_id: str, user=Depends(roles(Role.ADMIN)), db=Depends(get_db)):
 @router.post("/tasks/{task_id}/review")
 def review(task_id: str, data: ReviewInput, user=Depends(roles(Role.ADMIN, Role.REVIEWER)), db=Depends(get_db)):
     obj = task(db, user, task_id, lock=True)
-    submit_review(db,user,obj,data.decision,data.reason)
+    submit_review(db, user, obj, data.decision, data.reason)
     return serialize(obj)

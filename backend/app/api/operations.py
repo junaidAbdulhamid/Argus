@@ -49,5 +49,12 @@ def overview(project_id: str | None = None, user=Depends(current_user), db=Depen
         "throughput": throughput,
         "completed_this_week": len(completed),
         "queue": {"length": summary.get("QUEUED", 0), "redis": health(), "oldest_queued_at": oldest},
-        "activity": [{**serialize(e), "actor": name or "Deleted user"} for e, name in recent],
+        "activity": [
+            {**serialize(e), "actor": name or "Deleted user"}
+            for e, name in recent
+            if user.role.value != "ANNOTATOR"
+            or (
+                e.user_id == user.id and e.event_type in {"TASK_ASSIGNED", "ANNOTATION_STARTED", "ANNOTATION_SUBMITTED"}
+            )
+        ],
     }
