@@ -24,7 +24,9 @@ export async function api<T>(
           (d: { field: string; message: string }) => `${d.field}: ${d.message}`,
         )
         .join("; ") ||
-        body?.error?.message ||
+        (typeof body?.error?.message === "object"
+          ? `${body.error.message.message}: ${JSON.stringify(body.error.message.reasons || body.error.message.failures || [])}`
+          : body?.error?.message) ||
         `Request failed (${response.status})`,
     );
   }
@@ -50,3 +52,16 @@ export const time = (value: string) =>
   });
 export const human = (value: string) =>
   value.toLowerCase().replaceAll("_", " ");
+
+export async function downloadArtifact(path: string, filename: string) {
+  const response = await fetch(`/api${path}`, {
+    headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
+  });
+  if (!response.ok) throw new Error("Artifact download failed");
+  const url = URL.createObjectURL(await response.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

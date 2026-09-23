@@ -1,3 +1,4 @@
+import { DynamicFields } from "../components/DynamicFields";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
@@ -179,8 +180,12 @@ function Editor({
     [structured, setStructured] = useState(
       JSON.stringify(assignment.annotation?.structured_payload || {}, null, 2),
     ),
+    [values, setValues] = useState<Record<string, unknown>>(
+      assignment.annotation?.values || {},
+    ),
     [saved, setSaved] = useState(assignment.annotation?.id),
-    [dirty, setDirty] = useState(false);
+    [dirty, setDirty] = useState(false),
+    [escalationReason, setEscalationReason] = useState("");
   const task = useQuery({
     queryKey: ["task", assignment.task_id],
     queryFn: () => api<Task>(`/tasks/${assignment.task_id}`),
@@ -200,7 +205,7 @@ function Editor({
         saved
           ? `/annotations/${saved}`
           : `/assignments/${assignment.id}/annotations`,
-        { label, score, feedback, structured_payload: parsed },
+        { label, score, feedback, structured_payload: parsed, values },
         saved ? "PATCH" : "POST",
       );
     },
@@ -214,6 +219,17 @@ function Editor({
   const complete = useMutation({
     mutationFn: () => send(`/assignments/${assignment.id}/complete`),
     onSuccess: onComplete,
+  });
+  const escalation = useMutation({
+    mutationFn: () =>
+      send(`/tasks/${assignment.task_id}/escalations`, {
+        reason: escalationReason,
+      }),
+    onSuccess: () => {
+      setEscalationReason("");
+      notify("Escalation sent to reviewers");
+      qc.invalidateQueries({ queryKey: ["task", assignment.task_id] });
+    },
   });
   const changed = () => setDirty(true);
   return (
@@ -251,11 +267,22 @@ function Editor({
           onKeyDown={(e) => {
             if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
               e.preventDefault();
-              if (!save.isPending) save.mutate();
+              if (!save.isPending && e.currentTarget.reportValidity())
+                save.mutate();
             }
           }}
         >
           <fieldset disabled={save.isPending || complete.isPending}>
+            {assignment.schema && (
+              <DynamicFields
+                schema={assignment.schema}
+                values={values}
+                onChange={(v) => {
+                  setValues(v);
+                  changed();
+                }}
+              />
+            )}
             <label>
               Outcome label
               <Select
@@ -336,6 +363,24 @@ function Editor({
           </fieldset>
         </form>
         <div className="complete-section">
+          <details>
+            <summary>Need a reviewer’s help? Escalate</summary>
+            <label>
+              Escalation reason
+              <textarea
+                value={escalationReason}
+                onChange={(e) => setEscalationReason(e.target.value)}
+              />
+            </label>
+            {escalation.error && <ErrorState error={escalation.error} />}
+            <Button
+              variant="secondary"
+              disabled={!escalationReason.trim() || escalation.isPending}
+              onClick={() => escalation.mutate()}
+            >
+              Send escalation
+            </Button>
+          </details>
           <p>
             {dirty
               ? "Save your changes before submitting."

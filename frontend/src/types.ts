@@ -1,3 +1,4 @@
+import type { AnnotationSchema } from "./quality-types";
 export type Role = "ADMIN" | "ANNOTATOR" | "REVIEWER";
 export type Status =
   | "INGESTED"
@@ -6,7 +7,9 @@ export type Status =
   | "ANNOTATED"
   | "PENDING_REVIEW"
   | "APPROVED"
-  | "REJECTED";
+  | "REJECTED"
+  | "CHANGES_REQUESTED"
+  | "ESCALATED";
 export interface User {
   id: string;
   email: string;
@@ -23,6 +26,7 @@ export interface Project {
   created_at: string;
 }
 export interface Annotation {
+  values?: Record<string, unknown>;
   id: string;
   label: string;
   score: number;
@@ -32,6 +36,8 @@ export interface Annotation {
   assignment_id: string;
 }
 export interface Assignment {
+  schema?: AnnotationSchema | null;
+  round?: number;
   id: string;
   task_id: string;
   annotator_id: string;
@@ -40,6 +46,8 @@ export interface Assignment {
   annotation?: Annotation | null;
 }
 export interface Task {
+  annotation_round?: number;
+  required_annotations?: number;
   id: string;
   external_id: string | null;
   task_type: string;

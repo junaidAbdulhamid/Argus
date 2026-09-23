@@ -74,9 +74,16 @@ export default function TaskDetail() {
         description={`${t.task_type.replaceAll("_", " ")} · ${t.project?.name}`}
         action={
           <div className="actions">
+            {["ADMIN", "REVIEWER"].includes(user.role) && (
+              <Link className="button secondary" to={`/review/${id}`}>
+                Quality workspace
+              </Link>
+            )}
             <Badge status={t.status} />
             {user.role === "ADMIN" &&
-              ["INGESTED", "REJECTED"].includes(t.status) && (
+              ["INGESTED", "REJECTED", "CHANGES_REQUESTED"].includes(
+                t.status,
+              ) && (
                 <Button
                   disabled={queue.isPending}
                   onClick={() => queue.mutate()}

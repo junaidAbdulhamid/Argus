@@ -185,6 +185,9 @@ export function ProjectDetail() {
         action={
           user.role === "ADMIN" && (
             <Dropdown label="Manage project">
+              <Link className="button ghost" to={`/projects/${id}/quality`}>
+                Schemas & quality gates
+              </Link>
               <Button
                 variant="ghost"
                 onClick={() => {

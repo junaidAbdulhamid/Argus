@@ -85,6 +85,8 @@ export default function Tasks({
                 "PENDING_REVIEW",
                 "APPROVED",
                 "REJECTED",
+                "CHANGES_REQUESTED",
+                "ESCALATED",
               ].map((s) => (
                 <option key={s}>{s}</option>
               ))}

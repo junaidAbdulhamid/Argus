@@ -45,11 +45,25 @@ import Tasks from "./pages/Tasks";
 import TaskDetail from "./pages/TaskDetail";
 import Queue from "./pages/Queue";
 import Settings from "./pages/Settings";
+import SchemaBuilder from "./pages/SchemaBuilder";
+import ReviewQueue, { ReviewWorkspace } from "./pages/Review";
+import Quality, { Escalations } from "./pages/Quality";
+import GoldTasks from "./pages/GoldTasks";
+import Datasets, {
+  DatasetDetail,
+  DatasetBuilder,
+  VersionDetail,
+  ExportHistory,
+  Lineage,
+} from "./pages/Datasets";
 const links = [
   { path: "/", label: "Overview", icon: LayoutDashboard },
   { path: "/projects", label: "Projects", icon: FolderKanban },
   { path: "/tasks", label: "Tasks", icon: ListTodo },
   { path: "/queue", label: "Annotation Queue", icon: ScanEye },
+  { path: "/review", label: "Human Review", icon: ShieldCheck },
+  { path: "/quality", label: "Quality", icon: Activity },
+  { path: "/escalations", label: "Escalations", icon: ScanEye },
   { path: "/datasets", label: "Datasets", icon: Database },
   { path: "/monitoring", label: "Monitoring", icon: Activity },
 ];
@@ -129,7 +143,7 @@ export default function App() {
           <Link className="brand" to="/">
             <span className="brand-symbol">Λ</span>
             <span>ARGUS</span>
-            <span className="version">/ 01</span>
+            <span className="version">/ 02</span>
           </Link>
           <div className="workspace-label">
             <span className="workspace-avatar">A</span>
@@ -140,20 +154,29 @@ export default function App() {
           </div>
           <div className="nav-caption">WORKSPACE</div>
           <nav>
-            {links.map((l) => (
-              <NavLink
-                key={l.path}
-                end={l.path === "/"}
-                to={l.path}
-                onClick={() => setMobile(false)}
-              >
-                <l.icon size={18} />
-                <span>{l.label}</span>
-                {["Datasets", "Monitoring"].includes(l.label) && (
-                  <small>SOON</small>
-                )}
-              </NavLink>
-            ))}
+            {links
+              .filter(
+                (l) =>
+                  user.data.role !== "ANNOTATOR" ||
+                  ![
+                    "/review",
+                    "/quality",
+                    "/escalations",
+                    "/datasets",
+                  ].includes(l.path),
+              )
+              .map((l) => (
+                <NavLink
+                  key={l.path}
+                  end={l.path === "/"}
+                  to={l.path}
+                  onClick={() => setMobile(false)}
+                >
+                  <l.icon size={18} />
+                  <span>{l.label}</span>
+                  {["Monitoring"].includes(l.label) && <small>SOON</small>}
+                </NavLink>
+              ))}
           </nav>
           <div className="sidebar-bottom">
             <div className="sidebar-note">
@@ -232,7 +255,21 @@ export default function App() {
               <Route path="/tasks/:id" element={<TaskDetail />} />
               <Route path="/queue" element={<Queue />} />
               <Route path="/settings" element={<Settings />} />
-              <Route path="/datasets" element={<Future type="datasets" />} />
+              <Route path="/projects/:id/quality" element={<SchemaBuilder />} />
+              <Route path="/review" element={<ReviewQueue />} />
+              <Route path="/review/:id" element={<ReviewWorkspace />} />
+              <Route path="/quality" element={<Quality />} />
+              <Route path="/escalations" element={<Escalations />} />
+              <Route path="/gold" element={<GoldTasks />} />
+              <Route path="/datasets" element={<Datasets />} />
+              <Route path="/datasets/:id" element={<DatasetDetail />} />
+              <Route
+                path="/datasets/:id/builder"
+                element={<DatasetBuilder />}
+              />
+              <Route path="/dataset-versions/:id" element={<VersionDetail />} />
+              <Route path="/exports" element={<ExportHistory />} />
+              <Route path="/lineage/:id" element={<Lineage />} />
               <Route
                 path="/monitoring"
                 element={<Future type="monitoring" />}
@@ -254,7 +291,7 @@ export default function App() {
             </span>
             <span>
               <span className="live-dot" />
-              Phase 01 · Core platform
+              Phase 02 · Quality & datasets
             </span>
           </footer>
         </div>
